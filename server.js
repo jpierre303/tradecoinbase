@@ -6,7 +6,7 @@ const axios = require('axios');
 const app = express();
 app.use(bodyParser.json());
 
-const API_KEY_ID = process.env.API_KEY_ID;
+const API_KEY_ID = process.env.API_KEY_ID.trim();
 const PRIVATE_KEY = process.env.PRIVATE_KEY.replace(/\\n/g, '\n');
 
 function generateJWT() {
