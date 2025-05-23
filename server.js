@@ -6,11 +6,11 @@ const axios = require('axios');
 const app = express();
 app.use(bodyParser.json());
 
-// Claves desde Render
+// Variables de entorno desde Render
 const API_KEY_ID = process.env.API_KEY_ID.trim();
 const PRIVATE_KEY = process.env.PRIVATE_KEY.replace(/\\n/g, '\n');
 
-// Función para generar JWT
+// Función para generar el JWT
 function generateJWT() {
   const now = Math.floor(Date.now() / 1000);
   const payload = {
@@ -24,10 +24,11 @@ function generateJWT() {
   return jwt.sign(payload, PRIVATE_KEY, { algorithm: 'ES256' });
 }
 
-// Endpoint del webhook
+// Webhook
 app.post('/webhook', async (req, res) => {
   try {
     const jwtToken = generateJWT();
+    console.log("🔑 JWT generado:", jwtToken); // ✅ LOG para verificar el token
 
     const response = await axios.post(
       'https://api.coinbase.com/api/v3/brokerage/orders',
@@ -37,7 +38,7 @@ app.post('/webhook', async (req, res) => {
         side: 'BUY',
         order_configuration: {
           market_market_ioc: {
-            quote_size: '10.00' // compra por 10 USD
+            quote_size: '10.00'
           }
         }
       },
@@ -54,7 +55,7 @@ app.post('/webhook', async (req, res) => {
       data: response.data
     });
   } catch (error) {
-    console.error('ERROR:', error.response?.data || error.message);
+    console.error('❌ ERROR:', error.response?.data || error.message);
     res.status(500).json({
       status: 'Failed',
       error: error.response?.data || error.message
@@ -65,5 +66,5 @@ app.post('/webhook', async (req, res) => {
 // Iniciar el servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
- console.log("🔑 JWT generado:", jwtToken);
+  console.log(`🚀 Webhook running on port ${PORT}`);
 });
