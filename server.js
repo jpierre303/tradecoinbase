@@ -6,15 +6,17 @@ const axios = require('axios');
 const app = express();
 app.use(bodyParser.json());
 
+// Claves desde Render
 const API_KEY_ID = process.env.API_KEY_ID.trim();
 const PRIVATE_KEY = process.env.PRIVATE_KEY.replace(/\\n/g, '\n');
 
+// Función para generar JWT
 function generateJWT() {
   const now = Math.floor(Date.now() / 1000);
   const payload = {
     sub: API_KEY_ID,
     iss: API_KEY_ID,
-    aud: "retail_rest_api", // 👈 AÑADE ESTA LÍNEA
+    aud: "retail_rest_api",
     iat: now,
     exp: now + 180
   };
@@ -22,6 +24,7 @@ function generateJWT() {
   return jwt.sign(payload, PRIVATE_KEY, { algorithm: 'ES256' });
 }
 
+// Endpoint del webhook
 app.post('/webhook', async (req, res) => {
   try {
     const jwtToken = generateJWT();
@@ -34,25 +37,32 @@ app.post('/webhook', async (req, res) => {
         side: 'BUY',
         order_configuration: {
           market_market_ioc: {
-            quote_size: '10.00'
+            quote_size: '10.00' // compra por 10 USD
           }
         }
       },
       {
         headers: {
-          'Authorization': `Bearer ${jwtToken}`,
+          Authorization: `Bearer ${jwtToken}`,
           'Content-Type': 'application/json'
         }
       }
     );
 
-    res.status(200).json({ status: 'Order sent', data: response.data });
+    res.status(200).json({
+      status: 'Order sent',
+      data: response.data
+    });
   } catch (error) {
     console.error('ERROR:', error.response?.data || error.message);
-    res.status(500).json({ status: 'Failed', error: error.response?.data || error.message });
+    res.status(500).json({
+      status: 'Failed',
+      error: error.response?.data || error.message
+    });
   }
 });
 
+// Iniciar el servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Webhook running on port ${PORT}`);
