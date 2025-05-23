@@ -7,7 +7,7 @@ const app = express();
 app.use(bodyParser.json());
 
 const API_KEY_ID = process.env.API_KEY_ID;
-const PRIVATE_KEY = process.env.PRIVATE_KEY;
+const PRIVATE_KEY = process.env.PRIVATE_KEY.replace(/\\n/g, '\n');
 
 function generateJWT() {
   const now = Math.floor(Date.now() / 1000);
