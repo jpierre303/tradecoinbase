@@ -34,7 +34,7 @@ app.post('/webhook', async (req, res) => {
         side: 'BUY',
         order_configuration: {
           market_market_ioc: {
-            quote_size: '50.00'
+            quote_size: '10.00'
           }
         }
       },
