@@ -14,6 +14,7 @@ function generateJWT() {
   const payload = {
     sub: API_KEY_ID,
     iss: API_KEY_ID,
+    aud: "retail_rest_api", // 👈 AÑADE ESTA LÍNEA
     iat: now,
     exp: now + 180
   };
