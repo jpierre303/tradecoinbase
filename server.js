@@ -1,56 +1,58 @@
-const express = require("express");
-const crypto = require("crypto");
-const axios = require("axios");
+const express = require('express');
+const bodyParser = require('body-parser');
+const jwt = require('jsonwebtoken');
+const axios = require('axios');
 
 const app = express();
-app.use(express.json());
+app.use(bodyParser.json());
 
-const API_KEY = process.env.API_KEY;
-const API_SECRET = process.env.API_SECRET;
+const API_KEY_ID = process.env.API_KEY_ID;
+const PRIVATE_KEY = process.env.PRIVATE_KEY;
 
-app.post("/order", async (req, res) => {
+function generateJWT() {
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    sub: API_KEY_ID,
+    iss: API_KEY_ID,
+    iat: now,
+    exp: now + 180
+  };
+
+  return jwt.sign(payload, PRIVATE_KEY, { algorithm: 'ES256' });
+}
+
+app.post('/webhook', async (req, res) => {
   try {
-    const timestamp = Math.floor(Date.now() / 1000).toString();
-    const method = "POST";
-    const path = "/api/v3/brokerage/orders";
-    const body = JSON.stringify(req.body);
-    const prehash = timestamp + method + path + body;
-
-    const signature = crypto
-      .createHmac("sha256", API_SECRET)
-      .update(prehash)
-      .digest("base64");
+    const jwtToken = generateJWT();
 
     const response = await axios.post(
-      "https://api.coinbase.com" + path,
-      req.body,
+      'https://api.coinbase.com/api/v3/brokerage/orders',
+      {
+        client_order_id: 'bot-' + Date.now(),
+        product_id: 'BTC-USD',
+        side: 'BUY',
+        order_configuration: {
+          market_market_ioc: {
+            quote_size: '50.00'
+          }
+        }
+      },
       {
         headers: {
-          "CB-ACCESS-KEY": API_KEY,
-          "CB-ACCESS-SIGN": signature,
-          "CB-ACCESS-TIMESTAMP": timestamp,
-          "Content-Type": "application/json"
+          'Authorization': `Bearer ${jwtToken}`,
+          'Content-Type': 'application/json'
         }
       }
     );
 
-    res.json(response.data);
-  } catch (err) {
-    console.error("❌ ERROR STATUS:", err.response?.status);
-    console.error("❌ ERROR BODY:", err.response?.data);
-    console.error("❌ FULL ERROR:", err.message);
-    res.status(500).json({
-      error: "Order failed",
-      details: err.response?.data || err.message
-    });
+    res.status(200).json({ status: 'Order sent', data: response.data });
+  } catch (error) {
+    console.error('ERROR:', error.response?.data || error.message);
+    res.status(500).json({ status: 'Failed', error: error.response?.data || error.message });
   }
-});
-
-app.get("/", (req, res) => {
-  res.send("🚀 Webhook activo en Render");
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 Webhook running on port ${PORT}`);
 });
