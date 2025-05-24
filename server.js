@@ -3,8 +3,8 @@ const express = require("express");
 const bodyParser = require("body-parser"); // Para parsear el cuerpo de las solicitudes HTTP
 const jwt = require("jsonwebtoken"); // Para generar y verificar JSON Web Tokens
 const axios = require("axios"); // Para hacer solicitudes HTTP a Coinbase
-const crypto = require("crypto"); // Módulo nativo de Node.js para criptografía (¡NUEVA IMPORTACIÓN!)
-require("dotenv").config(); // Para cargar variables de entorno (si las usas localmente, Render las maneja)
+const crypto = require("crypto"); // Módulo nativo de Node.js para criptografía
+require("dotenv").config(); // Para cargar variables de entorno (Render las maneja, pero la línea es necesaria para el módulo)
 
 // Inicializar Express
 const app = express();
@@ -12,15 +12,16 @@ const app = express();
 // Middleware para parsear cuerpos de solicitud JSON
 app.use(bodyParser.json());
 
-// Variables de entorno (Render las proporciona, si corres local, asegúrate de tener .env)
+// Variables de entorno (Render las proporciona)
 const API_KEY_ID = process.env.API_KEY_ID;
-// El PRIVATE_KEY necesita que los saltos de línea sean reales, no '\n' escapados.
-// Render maneja esto bien si lo pegas directamente con los saltos de línea.
-const PRIVATE_KEY = process.env.PRIVATE_KEY.replace(/\\n/g, '\n'); 
+// El PRIVATE_KEY necesita que los saltos de línea sean reales.
+// La función .replace(/\\n/g, '\n') asegura que si los saltos de línea
+// están escapados como '\n', se conviertan en caracteres de salto de línea reales.
+const PRIVATE_KEY = process.env.PRIVATE_KEY.replace(/\\n/g, '\n');
 
 // === FUNCIÓN PARA GENERAR EL JWT PARA AUTENTICACIÓN DE COINBASE ===
 // Esta función ahora toma el método HTTP, la ruta de la API y el cuerpo de la solicitud
-// porque estos son necesarios para construir el 'sub' claim (hash) del JWT.
+// porque estos son necesarios para construir el 'sub' claim (hash) del JWT de Coinbase.
 function generateJWT(method, path, body) {
     const now = Math.floor(Date.now() / 1000); // Tiempo actual en segundos (nbf: Not Before)
     const exp = now + 60; // El token expira en 60 segundos (Coinbase recomienda tokens de corta vida)
@@ -28,14 +29,28 @@ function generateJWT(method, path, body) {
     // Construir el 'content' para el hash SHA256 del claim 'sub'
     // Coinbase requiere: método + ruta + cuerpo_de_la_solicitud (si es POST/PUT y tiene cuerpo)
     let contentToHash = method + path;
+    let bodyString = '';
     if (body && Object.keys(body).length > 0) {
         // Asegúrate de que el cuerpo sea una cadena JSON si existe.
-        // Importante: No uses espacios o formato en el JSON si Coinbase es estricto.
-        contentToHash += JSON.stringify(body); 
+        // Importante: JSON.stringify(body) debe producir la misma cadena exacta que Coinbase usa internamente.
+        // Asegúrate de no tener espacios o formato diferente.
+        bodyString = JSON.stringify(body);
+        contentToHash += bodyString;
     }
+
+    // --- DEBUGGING: Logs para verificar el contenido del hash ---
+    console.log("DEBUG_JWT: Method for hash:", method);
+    console.log("DEBUG_JWT: Path for hash:", path);
+    console.log("DEBUG_JWT: Body (stringified) for hash:", bodyString);
+    console.log("DEBUG_JWT: Full contentToHash for SHA256:", contentToHash);
+    // --- FIN DEBUGGING ---
 
     // Generar el hash SHA256 del contenido
     const subHash = crypto.createHash('sha256').update(contentToHash).digest('hex');
+
+    // --- DEBUGGING: Log el subHash generado ---
+    console.log("DEBUG_JWT: Generated subHash:", subHash);
+    // --- FIN DEBUGGING ---
 
     // Carga útil (payload) del JWT para Coinbase
     const jwtPayload = {
@@ -44,9 +59,13 @@ function generateJWT(method, path, body) {
         nbf: now,        // No antes de (tiempo actual)
         iss: API_KEY_ID, // El ID de tu clave API
         sub: subHash     // EL HASH SHA256 DEL REQUEST (MÉTODO + RUTA + CUERPO)
-        // Puedes agregar 'api: "retail_rest_api"' si los docs de Coinbase lo especifican para tu tipo de clave,
+        // Opcional: puedes agregar 'api: "retail_rest_api"' si los docs de Coinbase lo especifican para tu tipo de clave,
         // pero para la API de "Brokerage" a menudo no es necesario.
     };
+
+    // --- DEBUGGING: Log el payload completo del JWT ---
+    console.log("DEBUG_JWT: Full JWT Payload:", JSON.stringify(jwtPayload));
+    // --- FIN DEBUGGING ---
 
     // Firmar el JWT con la clave privada
     return jwt.sign(jwtPayload, PRIVATE_KEY, {
@@ -63,9 +82,8 @@ function generateJWT(method, path, body) {
 app.post("/webhook", async (req, res) => {
     try {
         // req.body contendrá el JSON que Make.com te envíe.
-        // Asegúrate de que Make.com envíe un JSON válido aquí.
-        const orderDetails = req.body; 
-        
+        const orderDetails = req.body;
+
         console.log("--> Webhook recibido con los siguientes detalles de orden:", orderDetails);
 
         // Validar que orderDetails no esté vacío (si esperas un cuerpo de Make.com)
@@ -76,10 +94,11 @@ app.post("/webhook", async (req, res) => {
 
         // Definir los detalles de la solicitud a Coinbase
         const coinbaseApiMethod = 'POST';
-        const coinbaseApiPath = '/api/v3/brokerage/orders';
-        const coinbaseApiUrl = `https://api.coinbase.com${coinbaseApiPath}`;
+        const coinbaseApiPath = '/api/v3/brokerage/orders'; // La ruta exacta sin el dominio base
+        const coinbaseApiUrl = `https://api.coinbase.com${coinbaseApiPath}`; // URL completa para axios
 
         // Generar el JWT para la solicitud específica a Coinbase
+        // Asegúrate de pasar el mismo método, ruta y cuerpo que enviarás en la solicitud axios a Coinbase.
         const jwtToken = generateJWT(
             coinbaseApiMethod,
             coinbaseApiPath,
@@ -109,19 +128,19 @@ app.post("/webhook", async (req, res) => {
         });
 
     } catch (error) {
-        // Manejo de errores
+        // Manejo de errores detallado
         let errorMessage = "Un error desconocido ocurrió.";
         if (error.response) {
             // El error es de la respuesta HTTP (ej. de Coinbase)
             console.error("<-- Error de la API de Coinbase:", error.response.status, error.response.data);
             errorMessage = `Error de la API de Coinbase (${error.response.status}): ${JSON.stringify(error.response.data)}`;
         } else if (error.request) {
-            // La solicitud fue hecha pero no se recibió respuesta (problema de red)
-            console.error("<-- No se recibió respuesta de Coinbase:", error.request);
-            errorMessage = "No se pudo conectar con la API de Coinbase.";
+            // La solicitud fue hecha pero no se recibió respuesta (problema de red/timeout)
+            console.error("<-- No se recibió respuesta de Coinbase (problema de red/timeout):", error.request);
+            errorMessage = "No se pudo conectar con la API de Coinbase o la solicitud expiró.";
         } else {
-            // Algo más causó el error (ej. error en el código local)
-            console.error("<-- Error al configurar la solicitud:", error.message);
+            // Algo más causó el error (ej. error en el código local antes de la solicitud HTTP)
+            console.error("<-- Error al configurar o ejecutar la solicitud (código local):", error.message);
             errorMessage = `Error interno del servidor: ${error.message}`;
         }
 
