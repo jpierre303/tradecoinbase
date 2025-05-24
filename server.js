@@ -17,7 +17,7 @@ function generateJWT() {
     const exp = now + 60;
 
     const jwtPayload = {
-        aud: "coinbase",
+        aud: ""retail_rest_api"",
         iat: now,
         exp: exp,
         nbf: now,
